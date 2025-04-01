@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Social Network Graph</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        body {
+            font-family: "Arial", sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        svg {
+            width: 100%;
+            height: 100vh;
+        }
+
+        .node {
+            stroke: #fff;
+            stroke-width: 1.5px;
+            cursor: pointer;
+        }
+
+        .link {
+            stroke: #ccc;
+            stroke-width: 1px;
+        }
+
+        .highlight {
+            fill: orange !important;
+        }
+
+        .label {
+            pointer-events: none;
+            font-size: 12px;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+            visibility: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="tooltip" class="tooltip"></div>
+    <svg id="network"></svg>
+    <script>
+        // Load the data for D3.js
+        d3.json('d3_network_data.json').then(function(graph) {
+    
+            var width = window.innerWidth;
+            var height = window.innerHeight;
+    
+            var svg = d3.select('svg');
+            var tooltip = d3.select('#tooltip');
+    
+            // Set up the zoom behavior
+            var zoom = d3.zoom()
+                .scaleExtent([0.1, 4])  // Allow zooming from 10% to 400%
+                .on('zoom', zoomed);
+    
+            svg.call(zoom);
+    
+            // Set up the simulation
+            var simulation = d3.forceSimulation(graph.nodes)
+                .force('link', d3.forceLink(graph.links).id(function(d) { return d.id; }).distance(100))
+                .force('charge', d3.forceManyBody().strength(-100))
+                .force('center', d3.forceCenter(width / 2, height / 2));
+    
+            // Create a container group for zooming and panning
+            var container = svg.append('g');
+    
+            // Draw links (edges)
+            var links = container.append('g')
+                .selectAll('.link')
+                .data(graph.links)
+                .enter().append('line')
+                .attr('class', 'link')
+                .attr('stroke-width', 1)
+                .attr('stroke', '#ccc');  // Default link color
+    
+            // Draw nodes
+            var nodes = container.append('g')
+                .selectAll('.node')
+                .data(graph.nodes)
+                .enter().append('circle')
+                .attr('class', 'node')
+                .attr('r', 10)
+                .attr('fill', 'skyblue')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended))
+                .on('mouseover', function(event, d) {
+                    tooltip.style('visibility', 'visible')
+                        .text(d.name);
+                })
+                .on('mousemove', function(event) {
+                    tooltip.style('top', (event.pageY + 10) + 'px')
+                        .style('left', (event.pageX + 10) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.style('visibility', 'hidden');
+                })
+                .on('click', function(event, d) {
+                    // Highlight the clicked node and its connections
+                    highlightConnections(d, this);
+                });
+    
+            // Add labels to nodes
+            var labels = container.append('g')
+                .selectAll('.label')
+                .data(graph.nodes)
+                .enter().append('text')
+                .attr('class', 'label')
+                .attr('dx', 12)
+                .attr('dy', '.35em')
+                .text(function(d) { return d.name; });
+    
+            // Update positions on each tick of the simulation
+            simulation.on('tick', function() {
+                links
+                    .attr('x1', function(d) { return d.source.x; })
+                    .attr('y1', function(d) { return d.source.y; })
+                    .attr('x2', function(d) { return d.target.x; })
+                    .attr('y2', function(d) { return d.target.y; });
+    
+                nodes
+                    .attr('cx', function(d) { return d.x; })
+                    .attr('cy', function(d) { return d.y; });
+    
+                labels
+                    .attr('x', function(d) { return d.x; })
+                    .attr('y', function(d) { return d.y; });
+            });
+    
+            // Dragging functions
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+    
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+    
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+    
+            // Zooming function
+            function zoomed(event) {
+                container.attr('transform', event.transform);
+            }
+    
+            // Highlight the clicked node and its direct connections
+            function highlightConnections(d, el) {
+                var isAlreadyHighlighted = el.classList.contains('highlight');
+    
+                // Reset the highlight of all nodes and links if clicking the same node again
+                if (isAlreadyHighlighted) {
+                    nodes.attr('class', 'node').attr('fill', 'skyblue');
+                    links.attr('class', 'link').attr('stroke', '#ccc').attr('stroke-width', 1);
+                    links.style('visibility', 'visible'); // Make all links visible again
+                    return; // Exit the function if the same node is clicked again
+                }
+    
+                // Reset any previous highlights
+                nodes.attr('class', 'node').attr('fill', 'skyblue');
+                links.attr('class', 'link').attr('stroke', '#ccc').attr('stroke-width', 1);
+                links.style('visibility', 'visible'); // Make all links visible again
+    
+                // Highlight the clicked node
+                d3.select(el).attr('class', 'node highlight').attr('fill', 'orange');
+    
+                // Highlight connections to the clicked node with a thicker and colorful line
+                links.filter(function(link) {
+                    return link.source.id === d.id || link.target.id === d.id;
+                })
+                .attr('class', 'link highlight')
+                .attr('stroke', 'orange')  // Change to orange for highlighted link
+                .attr('stroke-width', 3);  // Make the highlighted link thicker
+    
+                // Highlight connected nodes
+                nodes.filter(function(node) {
+                    return node.id === d.id || linkExists(d.id, node.id);
+                })
+                .attr('class', 'node highlight')
+                .attr('fill', 'orange');  // Keep highlighted nodes orange
+    
+                // Hide links that are not connected to the clicked node
+                links.filter(function(link) {
+                    return link.source.id !== d.id && link.target.id !== d.id;
+                }).style('visibility', 'hidden');
+            }
+    
+            // Check if a link exists between two nodes
+            function linkExists(sourceId, targetId) {
+                return graph.links.some(function(link) {
+                    return (link.source.id === sourceId && link.target.id === targetId) ||
+                           (link.source.id === targetId && link.target.id === sourceId);
+                });
+            }
+    
+        });
+    </script>
+    
+    
+    
+</body>
+</html>
